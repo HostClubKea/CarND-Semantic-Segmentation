@@ -10,6 +10,9 @@ import tensorflow as tf
 from glob import glob
 from urllib.request import urlretrieve
 from tqdm import tqdm
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 
 class DLProgress(tqdm):
@@ -109,11 +112,15 @@ def gen_test_output(sess, logits, keep_prob, image_pl, data_folder, image_shape)
     :param image_shape: Tuple - Shape of image
     :return: Output for for each test image
     """
+    softmax_ = tf.nn.softmax(logits)
+
     for image_file in glob(os.path.join(data_folder, 'image_2', '*.png')):
+        print_num_params(sess.graph)
+
         image = scipy.misc.imresize(scipy.misc.imread(image_file), image_shape)
 
         im_softmax = sess.run(
-            [tf.nn.softmax(logits)],
+            [softmax_],
             {keep_prob: 1.0, image_pl: [image]})
         im_softmax = im_softmax[0][:, 1].reshape(image_shape[0], image_shape[1])
         segmentation = (im_softmax > 0.5).reshape(image_shape[0], image_shape[1], 1)
@@ -124,6 +131,17 @@ def gen_test_output(sess, logits, keep_prob, image_pl, data_folder, image_shape)
 
         yield os.path.basename(image_file), np.array(street_im)
 
+
+def print_num_params(graph):
+  vvars = 0
+  for v in tf.global_variables():
+    vvars += np.prod(v.get_shape().as_list())
+  total_parameters = 0
+  for v in tf.trainable_variables():
+    total_parameters += np.prod(v.get_shape().as_list())
+  print('Total params = %i' % (total_parameters))
+  print('Total vars = %i' % (vvars))
+  print('Total ops = %i' % (len(graph.get_operations())))
 
 def save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, input_image):
     # Make folder for current run
@@ -138,3 +156,15 @@ def save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_p
         sess, logits, keep_prob, input_image, os.path.join(data_dir, 'data_road/testing'), image_shape)
     for name, image in image_outputs:
         scipy.misc.imsave(os.path.join(output_dir, name), image)
+
+
+def plot_loss(runs_dir, loss):
+    _, axes = plt.subplots()
+    plt.plot(range(0, len(loss)), loss)
+    plt.title('Cross-entropy loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.grid()
+    #axes.xaxis.set_major_locator(ticker.MultipleLocator(1))
+    output_file = os.path.join(runs_dir, str(time.time()) + ".png")
+    plt.savefig(output_file)
